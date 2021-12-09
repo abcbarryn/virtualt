@@ -1,0 +1,236 @@
+<HTML>
+<HEAD>
+	<TITLE>VirtualT Help - Emulation Features</TITLE>
+</HEAD>
+<BODY>
+
+<FONT FACE="veranda,arial">
+
+<P> <H1 ALIGN="CENTER"><A NAME="emulation">Chapter 5 - Emulation Features</A></H1>
+
+<P>This chapter describes the emulation features supported by VirtualT.  These include
+things such as display and speed settings, Peripherials, Option ROMs, etc.
+
+<OL>
+</OL>
+
+<B><A HREF="help.html">Home</A></B>
+
+<HR>
+
+<h2><a name="keyboard">Display</a></h2>
+<p>VirtualT emulates the Model T LCD display at the hardware level, like it does all other devices.
+Because of this, all software written for the Model T will also work on VirtualT, even if they make
+direct access to the LCD hardware.
+<p>The LCD hardware implementation varies depending on the emulation model.  For the T200, the LCD
+uses a single controller with 8K display RAM.  On the other models, the LCD consists of 10
+independant controllers, each responsibile for a specific region of the display.  With the exception
+of the T200 control chip's character generator ROM, the VirtualT emulation exactly matches the
+hardware at a register (I/O operation) level.
+<p>Several features provided by the LCD emulation and can be accessed using the "Emulation->Display"
+menu items.  These features are:
+<UL>
+<LI><b>Display Size:</b>  Allows magnification of the LCD (1x, 2x, 3x and 4x).  This is direct pixel copying
+of each pixel on the LCD.
+<LI><b>Solid Chars:</b>  Allows characters to be display with or without "spacing" between pixels.  On the real
+Model T, the old LCD techonology was coarse enough to see the spacing.  This allows the user to 
+choose between a "retro" look or a more readable look.
+<LI><b>Framed:</b>  This feature allows the user to view the LCD with the familiar "black frame" as seen on the
+original Model T, complete with function key labels, or as a simple window.
+</UL>
+
+<h2>Keyboard</h2>
+<p>The Model T keyboard, while very easy to use, has a non-standard layout of special symbols and punctuation compared
+with modern day keyboards.  The keyboard is a simple scan matrix of keys with 8 scan rows and 9 scan
+columns.  Each model uses the same keyscan arragement, but each assigns the key mappings differently. 
+Plus the Model T has a few extra keys that are not present on today's keyboards, such as CODE and GRPH.
+
+<p>Because of these differences, VirtualT must perform keyboard translation based on the emulated Model.
+Additionally, several keys of the standard 101-key keyboard are "mapped" to represent the extra keys
+present on the Model T.  The mapping of these keys is as follows:
+<p>
+<pre>
+   F9        - Label Key
+   F10       - Print Key
+   F11       - Paste Key
+   F12       - Pause Key
+   Left Alt  - GRAPH
+   Right Alt - CODE
+</pre>
+
+<p>There are no user controls for controlling the operation of the keyboard emulation.
+
+<h2><a name="speed">Speed</a></h2>
+<p>Emulation speed can be controlled using the "Emulation->Speed" menu item.  Emulation speed is calculated
+by analyzing the number of CPU cycles that have occurred over a given time interval.  A high-resolution timer
+is used to measure time in milliseconds for accurate measurement.  Even using a high-resolution timer, the 
+speed estimates calculated are still approximate.  For emulation speeds less than full speed, VirtualT slows
+the emulation by performing an FLTK wait operation, effectively giving control back to the OS and putting the
+application to "sleep".  There are four options for emulation speed accessible in the "Emulation->Speed" menu:
+<p>
+<pre>
+   2.4 Mhz           - Forces emulation to match origial Model T speed
+   Very CPU Friendly - Moderate emulation speed - consumes fewer Host CPU cycles 
+   CPU Friendly      - Faster emulation speed - cosumes more Host CPU cycles
+   Max Speed         - Provides the fastest emulation
+</pre>
+
+<h2><a name="optrom">Option ROMs</a></h2>
+<p>The Model T laptops use a system ROM to store the operating system and built-in applications.  In addition
+to the built in Operating System ROM (OpSys ROM), the laptops have a socket for adding an additional "Option ROM"
+in a covered compartment on the bottom of the unit.  Various option ROMs were developed for the Model T and are
+still available today at varous on-line stores / auctions.
+<p>VirtualT provides emulation of the Option ROM functinality via menu items on the "Emulation->Option ROM" menu.
+The sub-menu title will display the currently loaded Option ROM, if any, and the "Load ROM" and "Unload ROM" items
+can be used to control which "ROM" is loaded.  A single ROM can be "loaded" at any given time by choosing the
+"Load ROM" menu item and selecting the ROM image file from the browser dialog box.  The ROM image files can be either
+binary or Intel-Hex formatted files.  The selected ROM image file will be saved with other Preferences and will
+be associated with the current emulation model.   
+
+<h2><a name="memory">Memory Setup</a></h2>
+<p>Each Model T was shipped with base memory and an option to install additional memory base on the model.
+The Model 100 was upgradeable in 8K increments up to 32K while the Model 200 was upgradeable in 24K increments
+up to 72K.  Additional memory expansion products were developed as add-on modules to increase available memory.
+Most of these products were designed to connect to the system bus in the expansion compartment on the bottom of
+the laptop and provided 128K or 256K of expansion.  The newest expansion module called "ReMem" was developed
+by Steven Adolph in the 2006 / 2007 timeframe.  This device boosts the memory capability of the Model T to 
+2Meg RAM plus 4Meg FLASH, plus provides legacy interface protocol for the Rampac expansion module.
+
+<p>The default memory emulation in VirutalT matches that of a factory standard unit with maximum RAM expansion.
+he selected model.  Additional memory emulation configurations can be selected using the 
+"Emulation->Memory Configuration" menu.  This menu item will display the Memory Configuration dialog box 
+shown below.
+<p><img src="memory_setup.jpg" align="center">
+
+<p>The details of each option are:
+<ul>
+<li><b>Base Memory </b>- Emulates the maximum "Factory Shipped" memory configuration.
+<li><b>Rampac </b> - Emulates Base Memory plus a 256K RAM Rampac expansion module.
+<li><b>ReMem </b> - Emulates a ReMem expansion module.  Rampac accesses can be "emulated" by the ReMem
+and will show up in the ReMem memory space and RAM file.
+<li><b>ReMem + RamPac </b> - Emulates a ReMem expansion module and a Rampac.  Rampac accesses are directed
+to the Rampac memory space and saved in the Rampac RAM file.
+<p><li>ReMem Overrides Rampac - When both ReMem and Rampac are enabled, they can both respond to Rampac
+style I/O operations based on ReMem configuration.  This selection controls which emulation will respond
+to the I/O operations and therefore controls which memory space will be updated.  If this option is
+checked, then memory updates will be made to ReMem memory, otherwise they will be made to Rampac memory.
+<p><li>Make option ROM R/W - Useful for ReMem emulation.  Allows writes to the OptionROM space.
+<li>Patch ROM onload (...) - Enables / disables automatic patching to display version on MENU screen.
+</ul>
+
+<h2><a name="peripheral">Peripheral Setup</a></h2>
+<p>The Peripheral Setup dialog box is accessed via the "Emulation->Peripheral Setup" menu item and allows
+configuration of peripheral emulation options.  Currenlty the only peripheral that is supported is the
+serial port.  The Peripheral Setup dialog is displayed below.  It has a separate configuration tab for each
+of of the peripherals on the Model T, although most of them are simply placeholders for future functionality.
+
+
+<h3>COM port setup tab</h3>
+<p><img src="periph_setup.jpg" align="center">
+<p>This tab provides configuration options for emulation of the Model T serial port.  The controls on this tab
+provide the follwoing functionality:
+<ul>
+<li><b>No emulation</b> - No serial port emulation provided.
+<li><b>Use Simulated Port</b> - Not supported.  The idea is to provide a scriptable way to emulate something 
+connected to a serial port with action / response capabilities.
+<li><b>Use Host Port</b> - Provides a list of know host ports to "connect" to the Model T's serial port.
+<li><b>Use Other Host Port</b> - Allows the user to type a device name to "connect" to the Model T's serial port.
+</ul>
+<p>All serial port traffic and configuration updates are trapped by VirtualT and translated into the
+appropriate OS system calls to affect the desired response on a "real-world" serial device.  Serial I/O and
+configuration data can be monitored in the <a href="tools.html#periph">Peripherial Devices</a> dialog.
+
+<p>
+
+<h3>LPT port setup tab</h3>
+<p><img src="lpt_tab.jpg" align="center">
+<p>This tab provides configuration options for emulation of the Model T parallel port.  The controls on this tab
+provide the follwoing functionality:
+<ul>
+<li><b>No emulation</b> - No parallel port emulation provided.
+<li><b>Connect LPT To</b> - Emulates parallel port hardware and "connects" the printer specified in the listbox below
+to the emulated parallel port.  The selected printer can be configured using the "Printer Setup" button.
+<p><li>Convert lonely CR to LF - This option, if enabled, converts a single CR to a CRLF sequence.  If a
+CR is received as a CRLF pair, no conversion is provided.
+<p><li>Auto FormFeed after timeout - This option, if enabled, sends a FormFeed (FF) to the emulated printer
+after the spcified number of seconds.
+<p><li>Close Session after timeout - This option, if enabled, causes the print session to be automatically
+closed after a timeout.  See Print Session below.
+</ul>
+<p>All parallel port traffic is trapped by VirtualT and directed to the specified printer emulation for
+further processing.  For help on the emulated printers, see <a href="printers.html">Emulated Printers</a>.
+The LPT emulation maintains a Port Status to track I/O errors, aborted print jobs, and
+active Print Sessions.  The valid Port Status values are:
+
+<ul>
+<li>Idle - No printer activity or active print session open. Print Sesion closed.
+<li>Actv - Data actively being received on the LPT port. Print Session open.
+<li>Pend - Previously received data pending transmisison to the printer. Print Session open.
+<li>Err  - Indicates an error occurred on the emulated printer.
+<li>Abrt - A print job was aborted.  This status will be cleared automatically after a timeout.
+</ul>
+
+<p><b> Print Sessions</b>
+<p>
+As computers have become more advanced, so have the printer system associated with them.  Printing on 
+modern computers involves preparing a print job and submitting it for printing, usually to a print
+spooler or other print manager.  Since printing on the Model T consists simply of writing bytes to the
+LPT port until the job is complete, there is no defined ending for a "print job".  To accomodate printing
+to the Host's print spoolers, USB connected and network connected printers, the LPT emulation uses the
+concept of Print Sessions.  A Print Session is simply a way of defining a starting and ending point for
+a print job.  Data associated with a Print Session will be held until the Print Session is closed, at
+which point the entire print operation will be released for print.
+<p>Print Sessions are opened automatically when data is first received on the LPT port and will remain
+open until either closed automatically through selectable timeout or manually from the Printer Icon
+popup menu.  If automatic closure is selected, the timeout specified will be counted from the last
+byte received on the LPT port.  Any data received prior to expiration of the timeout time will reset
+the timer.
+
+<p><b>Printer Icon</b>
+<p>The printer icon on the bottom border of the main window indicates the curent Port Status and data
+activity.  Clicking on the Printer Icon will popup a Print Menu for controlling various printer
+operations.  During Idle or Pending states, the printer appears normally.  During active data transfer
+across the LPT port, the printer animates pages feeding through the printer.  If an error occurs, an
+exclamation point appears over the icon and if a print job is canceled, an X appears over the icon.  The
+status is also displayed in words to the right of the icon.  The Abort status is needed to allow trapping
+and ignoring additional data written to the LPT port after a print is aborted.  Since a Print Session
+is not opened for an aborted print job, simply returning to Idle state would prompt the user for print
+details upon receipt of the 2nd byte printed, then the 3rd, etc.  The Abort status can also be cleared
+by reseting the printer from the printer popup menu.
+
+<p>
+<p><b>Print Menu</b>
+<p><img src="print_menu.jpg">
+<p>The Print menu provides control of the current print session and the currently selected printer.  This
+is a popup menu that is accessed by clicking on the Printer Icon in the lower border of the Main Window.
+The options in this menu allow the user to cancel print jobs, submit pending print jobs to the destination
+output device (files or real printers), reset the printer and choose printer preferences.
+
+<p>
+
+<h3>Clock setup tab</h3>
+<p><img src="clock_tab.jpg" align="center">
+<p>This tab provides configuration options for emulation of the Model T Real-Time Clock.  Starting with
+VirtualT 1.3, the emulated time is no longer fixed to be the same as the host's time.  The controls on 
+this tab provide the follwoing functionality:
+<ul>
+<li><b>Reset to Host Time</b> - Causes the emulated time to match the host's time when VirtualT is
+started.  The clock can be changed during the emulation session, but will reset when the program is
+restarted.
+<li>Reset time when changing models - Resets the emulated clock to the host's time when switching
+between emulated models.  VirtualT maintains a single emulated clock source that can be set to any date
+(within the limits of the host).  All emulated models use the same virtual clock.  If this clock is changed
+in one model, those changes will be reflected in any other model that is selected unless this option is enabled.
+<p><li><b>Restore Emulated Time</b> - This option resets the emulation clock to match the 
+time of the emulated model when it was last suspended.  Each model can have a unique emulation time that
+is saved between emulation sessions.
+<li>Time elapses while emulation stopped - This option causes the emulation time to match the last
+known time for the specific model, adjusted by the elapsed "real world time" between the last suspension
+and the current time.
+</ul>
+<p>The alarm functions of the real-time-clock are not yet implemented.
+
+<p>
+
+</BODY>
+</HTML>

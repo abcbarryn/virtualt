@@ -1,0 +1,39 @@
+#!/bin/sh
+
+CWD=`pwd`
+dir=`dirname "$0"`
+cd "$dir"
+cd ..
+bundle_contents=`pwd`
+export PATH="$bundle_contents/Resources:$PATH"
+cd Resources
+bundle_res=`pwd`
+bundle_lib="$bundle_res"/lib
+bundle_bin="$bundle_res"/bin
+bundle_data="$bundle_res"/share
+bundle_etc="$bundle_res"/etc
+name=`basename "$0"`
+cd "$CWD"
+export DYLD_FALLBACK_LIBRARY_PATH="$bundle_lib"
+EXTRA_ARGS=
+if test -f "$bundle_res/environment.sh"; then
+  source "$bundle_res/environment.sh"
+fi
+
+osascript >/dev/null 2>&1 <<@EOF@ &
+tell application "System Events"
+    repeat until visible of process "$name" is false
+        set visible of process "$name" to false
+    end repeat
+end tell
+tell application "System Events"
+    repeat until visible of process "$name" is true
+        set visible of process "$name" to true
+    end repeat
+end tell
+tell application "System Events" to tell process "$name"
+    set frontmost to true
+end tell
+@EOF@
+
+exec "$bundle_contents/MacOS/$name-bin" "$@" $EXTRA_ARGS

@@ -1,0 +1,1108 @@
+{
+// 8085 Assembler Parser Syntax
+
+// Written by Kenneth D. Pettit
+//	      This is an input syntax grammer for the Anagram LARL Parser Generator
+
+}
+
+[
+	diagnose errors
+	error frame
+	disregard WS
+    distinguish lexemes
+	distinguish keywords { 'a-z'+'A-Z' + '0-9' + '_' + '$' + '-' + '+' + 'e' + 'E' + '!' }
+	case sensitive = off
+	lexeme { 
+		integer, literal name, register 8 bit, register 16 bit, hex integer,
+		decimal integer, real, simple real, literal string, label,  
+		string chars, include string, include chars, literal name, ascii integer,
+		escape char, asm hex value, singlequote chars, asm include,
+		singlequote string, literal name nows
+	}
+	sticky { 
+		literal name nows, integer, label, string chars, decimal integer, 
+		ascii integer, pagespec, and exp, shift exp, multiplicative exp,
+		inclusive or exp, additive exp, exclusive or exp, urinary exp,
+		page exp, instruction list, instruction, expression, literal name nows,
+	}
+	parser file name = ".\\#.cpp"
+]
+
+any text char   = ~eof - newline
+ascii           = 1..126
+WS	            = ' ' + '\t'
+digit           = '0-9'
+eof             = -1 + 0
+hex digit       = '0-9' + 'A-F' + 'a-f'
+newline         = '\n'
+letter          = 'a-z' + 'A-Z' + '_'
+label char      = '?' + '{' + '}'
+string char     = ~eof - ('"' + '\\' + '\n')
+rst arg			= '0-7'
+asm incl char	= 'a-z' + 'A-Z' + '0-9' + '_' + '.' + '\\' + '/'
+define chars	= ~eof - newline - '\\'
+PLUS			= '+'
+MINUS			= '-'
+
+/*
+============================================================================
+   Define the target token below.  This token is what the parser is trying 
+   to reduce the file to.  The token is a sequence of zero or more 
+   statements followed by an end-of-file 
+============================================================================
+*/
+a85parse $
+ -> { statement }...,
+    eof
+
+/*
+============================================================================
+   Define what a comment looks like.  We allow C, C++, and assembly style 
+   comments.
+============================================================================
+*/
+
+comment
+ -> cstyle comment
+ -> "//", any text char?..., '\n'
+ -> ';', any text char?..., '\n'
+// -> ',', any text char?..., '\n'
+ -> '\n'
+ -> eof
+
+cstyle comment
+ -> cstyle comment head, "*/"
+
+cstyle comment head
+ -> "/*"
+ -> cstyle comment head, ~eof
+ -> cstyle comment head, cstyle comment
+
+
+/* 
+============================================================================
+   Define what any individual statement can look like 
+============================================================================
+*/
+statement
+ -> WS..., expression, WS?..., comment
+ -> label, WS?..., expression, WS?..., comment
+ -> label, WS?..., comment
+ -> WS?..., comment
+ -> preproc inst
+ -> label, WS?..., '.'?, "equ", equation, WS?..., comment	= gAsm->equate((const char *) -1);
+ -> label, WS?..., '.'?, "set", equation, WS?..., comment	= gAsm->directive_set((const char *) -1);
+ -> label, WS?..., "=", equation, WS?..., comment			= gAsm->directive_set((const char *) -1);
+ -> WS?..., '.'?, {"include" | "incl"}, literal string, 
+		WS?..., comment								= gAsm->include(ss[ss_idx--]);
+ -> WS?..., '.'?, {"include" | "incl"}, include string, 
+		WS?...,	comment								= gAsm->include(ss[ss_idx--]);
+ -> WS?..., '.'?, {"include" | "incl"}, asm include, 
+		WS?...,	comment								= gAsm->include(ss[ss_idx--]);
+ -> WS..., cdseg statement							= gAsm->directive_cdseg(seg, page);
+ -> label, WS?..., cdseg statement					= gAsm->directive_cdseg(seg, page);
+ -> error, '\n'										= handle_error();
+ -> WS..., '\n'
+
+preproc start
+ -> "#"
+ 
+preproc inst
+ -> preproc start, preprocessor directive
+
+preprocessor directive
+ -> "include", literal string, WS?..., comment		= gAsm->include(ss[ss_idx--]);
+ -> "include", include string, WS?..., comment		= gAsm->include(ss[ss_idx--]);
+ -> "pragma", "list", WS?..., comment				= gAsm->pragma_list();
+ -> "pragma", "hex", WS?..., comment				= gAsm->pragma_hex();
+ -> "pragma", "entry", WS?..., literal name nows, WS?..., comment	= gAsm->pragma_entry(ss[ss_idx--]);
+ -> "pragma", "verilog", WS?..., comment			= gAsm->pragma_verilog();
+ -> "pragma", "extended", WS?..., comment			= gAsm->pragma_extended();
+ -> "ifdef", literal name nows, WS?, comment		= gAsm->preproc_ifdef(ss[ss_idx--]);
+ -> "if", condition, WS?..., comment				= gAsm->preproc_if();
+ -> "elif", condition, WS?..., comment				= gAsm->preproc_elif();
+ -> "ifndef", literal name nows, WS?..., comment	= gAsm->preproc_ifndef(ss[ss_idx--]);
+ -> "else", WS?..., comment							= gAsm->preproc_else();
+ -> "endif", WS?..., comment						= gAsm->preproc_endif();
+ -> "error", literal string, WS?..., comment		= {if (gAsm->preproc_error(ss[ss_idx--])) gAbort = TRUE;}
+ -> "echo", WS?..., literal string, WS?..., comment	= gAsm->directive_printf(ss[ss_idx--], FALSE);
+ -> "echo", WS?..., equation, WS?..., comment		= gAsm->directive_printf("%d");
+ -> "print", WS?..., literal string, WS?..., comment= gAsm->directive_printf(ss[ss_idx--], FALSE);
+ -> "printf", WS?..., literal string, 
+		',', WS?..., equation, WS?..., comment		= gAsm->directive_printf(ss[ss_idx--]);
+ -> "undef", literal name nows, WS?..., comment		= gAsm->preproc_undef(ss[ss_idx--]);
+ -> "define", macro, WS?..., 
+		macro expansion, WS?..., comment			= { if (gMacroStack[ms_idx] != 0) { delete gMacroStack[ms_idx]; \
+															gMacroStack[ms_idx] = 0; } \
+														gMacro = gMacroStack[--ms_idx]; \
+														gMacro->m_DefString = ss[ss_idx--]; \
+														gAsm->preproc_define(); \
+														gMacroStack[ms_idx] = 0; gDefine = 0; }
+
+//macro definition
+// -> literal name nows, '(', parameter list, ')'		= { if (gAsm->preproc_macro()) \
+//															PCB.reduction_token = a85parse_WS_token; }
+// -> literal name nows								= { if (gAsm->preproc_macro()) \
+//															PCB.reduction_token = a85parse_WS_token; }
+ 
+macro
+ -> literal name nows, '(', expression list, ')'	= { gMacro->m_ParamList = gExpList; \
+															gMacro->m_Name = ss[ss_idx--]; \
+															gExpList = new VTObArray; \
+															gMacroStack[ms_idx++] = gMacro; \
+															if (gAsm->preproc_macro()) \
+																PCB.reduction_token = a85parse_WS_token; \
+															gMacro = new CMacro; }
+ -> literal name nows								= { gMacro->m_Name = ss[ss_idx--]; gMacroStack[ms_idx++] = gMacro; \
+															if (gAsm->preproc_macro()) \
+																PCB.reduction_token = a85parse_WS_token; \
+															gMacro = new CMacro; }
+
+macro expansion
+ -> define chars - WS:c								= { ss[++ss_idx][0] = c; ss[ss_idx][1] = 0; ss_len = 1; }
+ -> macro expansion, define chars:c				= { ss[ss_idx][ss_len++] = c; ss[ss_idx][ss_len] = 0; }
+ -> macro expansion, "\\\n"							= { ss[ss_idx][ss_len++] = '\n'; ss[ss_idx][ss_len] = 0; }
+
+cdseg statement start
+ -> '.'?, "cseg"									= { page = 0; seg = CSEG; }
+ -> '.'?, "dseg"									= { page = 0; seg = DSEG; }
+
+cdseg statement
+ -> cdseg statement start, WS?..., comment
+ -> cdseg statement start, WS?..., pagespec:p, 
+		WS?..., comment								= page = p;
+ 
+expression
+ -> macro
+ -> '.'?, "list"									= gAsm->pragma_list();
+ -> '.'?, "hex"										= gAsm->pragma_hex();
+ -> '.'?, "verilog"									= gAsm->pragma_verilog();
+ -> '.'?, "entry", literal name nows				= gAsm->pragma_entry(ss[ss_idx--]);
+ -> '.'?, "extended"								= gAsm->pragma_extended();
+ -> '.'?, {"org" | "$=" | "*="}, equation			= gAsm->directive_org();
+ -> '.'?, "aseg"									= gAsm->directive_aseg();
+ -> '.'?, {"ds" | "block"}, equation				= gAsm->directive_ds();
+ -> '.'?, {"db" | "byte" | "text"}, 
+		expression list								= gAsm->directive_db();
+ -> '.'?, {"dw" | "word"},
+		expression list								= gAsm->directive_dw();
+ -> '.'?, "public", name list						= gAsm->directive_public();
+ -> '.'?, "extrn", name list						= gAsm->directive_extern();
+ -> '.'?, "extern", name list						= gAsm->directive_extern();
+ -> '.'?, "module", literal name nows				= gAsm->directive_module(ss[ss_idx--]);
+ -> '.'?, "name", literal name nows					= gAsm->directive_name(ss[ss_idx--]);
+ -> '.'?, "stkln", equation							= gAsm->directive_stkln();
+ -> '.'?, "echo", equation							= gAsm->directive_echo();
+ -> '.'?, "echo", literal string					= gAsm->directive_echo(ss[ss_idx--]);
+ -> '.'?, "fill", WS?..., expression list			= gAsm->directive_fill();
+ -> '.'?, "echo", WS?..., literal string			= gAsm->directive_printf(ss[ss_idx--], FALSE);
+ -> '.'?, "echo", WS?..., equation					= gAsm->directive_printf("%d");
+ -> '.'?, "print", literal string					= gAsm->directive_printf(ss[ss_idx--], FALSE);
+ -> '.'?, "printf", literal string, 
+		',', WS?..., equation						= gAsm->directive_printf(ss[ss_idx--]);
+ -> '.'?, "end"										= gAsm->directive_end("");
+ -> '.'?, "end", literal name nows					= gAsm->directive_end(ss[ss_idx--]);
+ -> "if", condition									= gAsm->directive_if();
+ -> "else"											= gAsm->directive_else();
+ -> "endif"											= gAsm->directive_endif();
+ -> '.'?, "msfirst"									= gAsm->directive_endian(1);
+ -> '.'?, "lsfirst"									= gAsm->directive_endian(0);
+ -> '.'?, "title", singlequote string				= gAsm->directive_title(ss[ss_idx--]);
+ -> '.'?, "title", literal string					= gAsm->directive_title(ss[ss_idx--]);
+ -> '.'?, "nopage"									= gAsm->directive_page(-1);
+ -> '.'?, "sym"										= gAsm->directive_sym();
+ -> '.'?, "link", asm include						= gAsm->directive_link(ss[ss_idx--]);
+ -> '.'?, "maclib", literal name nows				= gAsm->directive_maclib(ss[ss_idx--]);
+ -> instruction list
+ -> page exp										= gAsm->directive_page(page);
+
+page exp
+ -> '.'?, "page"									= page = 60;
+ -> page exp, WS..., integer:n						= page = n;
+
+
+expression list
+ -> literal string									= expression_list_literal();
+ -> singlequote string								= expression_list_literal();
+ -> equation										= expression_list_equation();
+ -> expression list, ",", WS?..., 
+		equation									= expression_list_equation();
+ -> expression list, ",", WS?..., 
+		literal string								= expression_list_literal();
+ -> expression list, ",", WS?...,
+		singlequote string							= expression_list_literal();
+ [ hidden {expression list} ]
+
+/*
+============================================================================
+   Define a literal name below.  A literal name is a sequence of letters 
+   with no space or punctuation between.
+============================================================================
+*/
+
+name list
+ -> literal name nows								= gNameList->Add(ss[ss_idx--]); 
+ -> name list, ",", WS?...,	literal name nows		= gNameList->Add(ss[ss_idx--]);
+
+literal name
+ -> literal name nows, WS?...                  
+
+literal name nows
+ -> literal alpha
+// -> "$"												= { strcpy(ss[++ss_idx], "$"); ss_len = 1; printf("Added '$'\n"); }
+ -> "&"												= { strcpy(ss[++ss_idx], "&"); ss_len = 1; }
+
+literal alpha
+ -> letter + label char:c							= { ss[++ss_idx][0] = c; ss[ss_idx][1] = 0; ss_len = 1; \
+														if (PCB.column == 2) ss_addr = gAsm->m_ActiveSeg->m_Address; }
+ -> literal name nows, letter+label char + '.':c	= { ss[ss_idx][ss_len++] = c; ss[ss_idx][ss_len] = 0; }
+ -> literal name nows, digit:c						= { ss[ss_idx][ss_len++] = c; ss[ss_idx][ss_len] = 0; }
+
+asm include
+ -> asm incl char:c									= { ss[++ss_idx][0] = c; ss[ss_idx][1] = 0; ss_len = 1; }
+ -> asm include, asm incl char:c					= { ss[ss_idx][ss_len++] = c; ss[ss_idx][ss_len] = 0; }
+
+singlequote string
+ -> singlequote chars, '\''
+
+singlequote chars
+ -> '\'', escape char:ch1, escape char:ch2			= { ss_idx++; ss_len = 2; sprintf(ss[ss_idx], "%c%c", ch1, ch2); }
+ -> singlequote chars, escape char:c				= { ss[ss_idx][ss_len++] = c; ss[ss_idx][ss_len] = 0; }
+[ hidden {singlequote chars} ]
+
+literal string
+ -> string chars, '"'
+
+string chars
+ -> '"'												= { ss_idx++; ss_len = 0; }
+ -> string chars, str escape char:c					= { ss[ss_idx][ss_len++] = c; ss[ss_idx][ss_len] = 0; }
+ -> string chars, '\\', '\n'
+[ hidden {string chars} ]
+
+(int) str escape char
+ -> ascii - '"' - '\\':n							= n;
+ -> '\\', '\\'										= '\\';
+ -> '\\', 'n'										= '\n';
+ -> '\\', 't'										= '\t';
+ -> '\\', 'r'										= '\r';
+ -> '\\', '0'										= '\0';
+ -> '\\', '"'										= '"';
+ -> '\\', 'b'										= 0x08;
+ -> '\\', 'f'										= 0x0C;
+ -> '\\', '0-3':n1, '0-9':n2, '0-9':n3				= (n1-'0') * 64 + (n2-'0') * 8 + n3-'0'; 
+ -> '\\', {'x'|'$'}, hex digit:n1, hex digit:n2		= chtoh(n1) * 16 + chtoh(n2); 
+ -> '\\', {'x'|'$'}, hex digit:n1					= chtoh(n1); 
+[ hidden {str escape char} ]
+
+include string
+ -> include chars, '>'								= { ss[ss_idx][ss_len++] = '>'; ss[ss_idx][ss_len] = 0; }
+
+include chars
+ -> '<'												= { ss[++ss_idx][0] = '<'; ss[ss_idx][1] = 0; ss_len = 1; }
+ -> include chars, string char - '>':c				= { ss[ss_idx][ss_len++] = c; ss[ss_idx][ss_len] = 0; }
+ -> include chars, '\\', ~eof - '\n':c				= { ss[ss_idx][ss_len++] = '\\'; ss[ss_idx][ss_len++] = c; ss[ss_idx][ss_len] = 0; }
+ -> include chars, '\\', '\n'
+[ hidden {include chars} ]
+
+label
+ -> literal name nows, ":"							= gAsm->label(ss[ss_idx--]);
+ -> literal name nows								= gAsm->label(ss[ss_idx--]);
+ -> ".bss"											= gAsm->label(".bss");
+ -> ".text"											= gAsm->label(".text");
+ -> ".data"											= gAsm->label(".data");
+
+(int) pagespec
+ -> "page"											= PAGE;
+ -> "inpage"										= INPAGE;
+
+/* 
+============================================================================
+   Define conditions.  Conditions can be expressed using either the 
+   traditional 8085 assembly 'EQ', 'NE' format or using C format syntax
+   such as '==', '!-', etc.
+============================================================================
+*/
+condition
+ -> condition start, equation						= condition(-1);
+ -> equation										= condition(COND_NOCMP);
+
+condition start
+ -> equation, {"eq" | "==" | "="}					= condition(COND_EQ);
+ -> equation, {"ne" | "!="}							= condition(COND_NE);
+ -> equation, {"ge" | ">="}							= condition(COND_GE);
+ -> equation, {"le" | "<="}							= condition(COND_LE);
+ -> equation, {"gt" | ">"}							= condition(COND_GT);
+ -> equation, {"lt" | "<"}							= condition(COND_LT);
+[ hidden {condition start} ]
+
+/* 
+============================================================================
+   Define equations.  We support complex equations that consist of additive, 
+   multiplicative, bit and operators, and functions.  Order of presedence 
+   for these components follows standard algebraic presedence.
+============================================================================
+*/
+
+equation
+ -> inclusive or exp
+
+(void) inclusive or exp
+ -> exclusive or exp, WS?...
+ -> inclusive or exp, '|', WS?..., exclusive or exp		= gEq->Add(RPN_BITOR);
+ -> inclusive or exp, "or", WS?..., exclusive or exp	= gEq->Add(RPN_BITOR);
+
+(void) exclusive or exp
+ -> and exp, WS?...
+ -> exclusive or exp, '^', WS?..., and exp			= gEq->Add(RPN_BITXOR);
+ -> exclusive or exp, "xor", WS?..., and exp		= gEq->Add(RPN_BITXOR);
+
+(void) and exp
+ -> shift exp, WS?...
+ -> and exp, '&', WS?..., shift exp					= gEq->Add(RPN_BITAND);
+ -> and exp, "and", WS?..., shift exp				= gEq->Add(RPN_BITAND);
+
+(void) shift exp
+ -> additive exp, WS?...
+ -> shift exp, "<<", WS?..., additive exp			= gEq->Add(RPN_LEFTSHIFT);
+ -> shift exp, "shl", WS?..., additive exp			= gEq->Add(RPN_LEFTSHIFT);
+ -> shift exp, ">>", WS?..., additive exp			= gEq->Add(RPN_RIGHTSHIFT);
+ -> shift exp, "shr", WS?..., additive exp			= gEq->Add(RPN_RIGHTSHIFT);
+
+(void) additive exp
+ -> multiplicative exp, WS?...
+ -> additive exp, '+', WS?..., multiplicative exp	= gEq->Add(RPN_ADD);
+ -> additive exp, '-', WS?..., multiplicative exp	= gEq->Add(RPN_SUBTRACT);
+
+(void) multiplicative exp
+ -> urinary exp, WS?...
+ -> multiplicative exp, '*', WS?..., primary exp	= gEq->Add(RPN_MULTIPLY);
+ -> multiplicative exp, '/', WS?..., primary exp	= gEq->Add(RPN_DIVIDE);
+ -> multiplicative exp, '%', WS?..., primary exp	= gEq->Add(RPN_MODULUS);
+ -> multiplicative exp, "mod", WS?..., primary exp	= gEq->Add(RPN_MODULUS);
+ -> multiplicative exp, "**", WS?..., primary exp	= gEq->Add(RPN_EXPONENT);
+
+urinary exp
+ -> primary exp
+ -> '!', primary exp								= gEq->Add(RPN_NOT);
+ -> "not", primary exp								= gEq->Add(RPN_NOT);
+ -> '~', primary exp								= gEq->Add(RPN_BITNOT);
+ -> '-', primary exp								= gEq->Add(RPN_NEGATE);
+
+primary exp
+ -> value:n											= gEq->Add((double) n);
+// -> literal name nows								= gEq->Add(ss[ss_idx--]);
+ -> macro											= { delete gMacro; gMacro = gMacroStack[ms_idx-1]; \
+														gMacroStack[ms_idx--] = 0; if (gMacro->m_ParamList == 0) \
+														{\
+															gEq->Add(gMacro->m_Name); gMacro->m_Name = ""; }\
+														else { \
+															gEq->Add((VTObject *) gMacro); gMacro = new CMacro; \
+														} }
+ -> '$'												= gEq->Add("$");
+ -> function
+ -> '(', WS?..., equation, WS?..., ')'
+
+(void) function
+ -> "floor", WS?..., '(', equation, ')'				= gEq->Add(RPN_FLOOR);
+ -> "ceil", WS?..., '(', equation, ')'				= gEq->Add(RPN_CEIL);
+ -> "ln", WS?..., '(', equation, ')'				= gEq->Add(RPN_LN);
+ -> "log", WS?..., '(', equation, ')'				= gEq->Add(RPN_LOG);
+ -> "sqrt", WS?..., '(', equation, ')'				= gEq->Add(RPN_SQRT);
+ -> "ip", WS?..., '(', equation, ')'				= gEq->Add(RPN_IP);
+ -> "fp", WS?..., '(', equation, ')'				= gEq->Add(RPN_FP);
+ -> "high", WS?..., '(', equation, ')'				= gEq->Add(RPN_HIGH);
+ -> "low", WS?..., '(', equation, ')'				= gEq->Add(RPN_LOW);
+ -> "page", WS?..., '(', equation, ')'				= gEq->Add(RPN_PAGE);
+ -> "defined", WS?..., '(', WS?..., literal name, 
+		WS?..., ')'									= gEq->Add(RPN_DEFINED, ss[ss_idx--]); 
+
+/* 
+============================================================================
+	Define what values look like
+============================================================================
+*/
+
+(double) value
+ -> integer:n										= n;
+ -> real:r											= r;
+
+(int) integer
+ -> ascii integer:n									= n;
+ -> decimal integer									= conv_to_dec();
+ -> hex integer										= conv_to_hex();
+ -> binary integer									= conv_to_bin();
+ -> octal integer									= conv_to_oct();
+ -> asm hex	value, 'h'+'H'							= conv_to_hex();
+ -> decimal integer, 'h'+'H'						= conv_to_hex();
+ -> decimal integer, 'b'							= conv_to_bin();
+ -> decimal integer, {"q"|"o"}						= conv_to_oct();
+ -> decimal integer, 'd'							= conv_to_dec();
+
+decimal integer
+ -> '+', '0-9':n									= { int_len = 1; integer[0] = n; integer[1] = 0; }
+ -> '-', '0-9':n									= { int_len = 2; integer[0] = '-', integer[1] = n; integer[2] = 0; }
+ -> '0-9':n											= { int_len = 1; integer[0] = n; integer[1] = 0; }
+ -> decimal integer, '0-9':n						= { integer[int_len++] = n; integer[int_len] = 0; }
+ -> decimal integer, '_'
+// -> decimal integer, '$'
+
+hex integer
+ -> '0', 'x' + 'X', hex digit:n						= { int_len = 1; integer[0] = n; integer[1] = 0; }
+ -> '$', hex digit:n								= { int_len = 1; integer[0] = n; integer[1] = 0; }
+ -> hex integer, hex digit:n						= { integer[int_len++] = n; integer[int_len] = 0; }
+
+asm hex value
+ -> decimal integer, 'A-F' + 'a-f':n				= { integer[int_len++] = n; integer[int_len] = 0; }
+ -> asm hex value, hex digit:n						= { integer[int_len++] = n; integer[int_len] = 0; }
+
+binary integer
+ -> '%', '0-1':n									= { integer[int_len++] = n; integer[int_len] = 0; }
+ -> binary integer, '0-1':n							= { integer[int_len++] = n; integer[int_len] = 0; }
+
+octal integer
+ -> '@', '0-7':n									= { integer[int_len++] = n; integer[int_len] = 0; }
+ -> octal integer, '0-7':n							= { integer[int_len++] = n; integer[int_len] = 0; }
+
+(int) ascii integer
+ -> '\'', escape char:n, '\''						= n;
+ -> '\'', escape char:n1, escape char:n2, '\''		= (n1 << 8) | n2;
+ -> "'\\'"											= '\\';
+
+(int) escape char
+ -> ascii - '\\' - '\'':n							= n;
+ -> '\\', '\\'										= '\\';
+ -> '\\', 'n'										= '\n';
+ -> '\\', 't'										= '\t';
+ -> '\\', 'r'										= '\r';
+ -> '\\', '0'										= '\0';
+ -> "''"											= '\'';
+ -> '\\', '\''										= '\'';
+
+(double) real
+ -> simple real
+
+(double) simple real
+ -> decimal integer, '.'							= { gDivisor = 1.0; return (double) conv_to_dec(); }
+ -> '.', '0-9':d									= { gDivisor = 10.0; return ((double) (d - '0') / gDivisor); }
+ -> simple real:r, '0-9':d							= { gDivisor *= 10.0; return (r + (double) (d - '0') / gDivisor); }
+[ hidden {simple real} ]
+
+
+/* 
+============================================================================
+	Define what registers look like
+============================================================================
+*/
+
+register 8 bit
+ -> "b"												= reg[reg_cnt++] = '0';
+ -> "c"												= reg[reg_cnt++] = '1';
+ -> "d"												= reg[reg_cnt++] = '2';
+ -> "e"												= reg[reg_cnt++] = '3';
+ -> "h"												= reg[reg_cnt++] = '4';
+ -> "l"												= reg[reg_cnt++] = '5';
+ -> {"m" | "(hl)"}									= reg[reg_cnt++] = '6';
+ -> "a"												= reg[reg_cnt++] = '7';
+
+register 16 bit
+ -> {"b" | "bc" }									= reg[reg_cnt++] = '0';
+ -> {"d" | "de" }									= reg[reg_cnt++] = '1';
+ -> {"h" | "hl" }									= reg[reg_cnt++] = '2';
+ -> "sp"											= reg[reg_cnt++] = '3';
+
+stack register
+ -> {"b" | "bc" }									= reg[reg_cnt++] = '0';
+ -> {"d" | "de" }									= reg[reg_cnt++] = '1';
+ -> {"h" | "hl" }									= reg[reg_cnt++] = '2';
+ -> "psw"											= reg[reg_cnt++] = '3';
+ -> "a"												= reg[reg_cnt++] = '3';
+
+bd register
+ -> {"b" | "bc" }									= reg[reg_cnt++] = '0';
+ -> {"d" | "de" }									= reg[reg_cnt++] = '1';
+
+page register
+ -> {"b" | "bc" }									= reg[reg_cnt++] = '0';
+ -> {"d" | "de" }									= reg[reg_cnt++] = '1';
+ -> {"h" | "hl" }									= reg[reg_cnt++] = '2';
+ -> "dx"											= reg[reg_cnt++] = '3';
+ -> "pc"											= reg[reg_cnt++] = '4';
+ -> "sp"											= reg[reg_cnt++] = '5';
+
+/* 
+============================================================================
+	Define the 8085 instruction set
+============================================================================
+*/
+instruction list
+ -> instruction, WS?...
+// -> instruction, WS?...
+// -> instruction list, WS?..., "!"
+// -> instruction list, WS?..., "\\"
+// -> instruction list, '!', WS..., instruction
+// -> instruction list, '\\', WS?..., instruction
+// -> instruction list, instruction
+
+instruction
+ -> eight bit reg inst
+ -> sixteen bit reg inst
+ -> bd reg inst
+ -> stack reg inst
+ -> immediate operand inst
+ -> lxi inst
+ -> mvi inst
+ -> spi inst
+ -> rst inst
+ -> no arg inst
+ -> instruction list, "!", WS?..., instruction
+// -> instruction list, "\\", WS?..., instruction
+ 
+no arg inst
+ -> {"ashr" | "shlr" | "arhl" | "rrhl" }			= gAsm->opcode_arg_0		(OPCODE_ASHR);
+ -> "cma"											= gAsm->opcode_arg_0		(OPCODE_CMA);
+ -> "cmc"											= gAsm->opcode_arg_0		(OPCODE_CMC);
+ ->	"daa"											= gAsm->opcode_arg_0		(OPCODE_DAA);
+ -> "di"											= gAsm->opcode_arg_0		(OPCODE_DI);
+ -> {"dsub" | "hlmbc" }								= gAsm->opcode_arg_0		(OPCODE_DSUB);
+ -> "ei"											= gAsm->opcode_arg_0		(OPCODE_EI);
+ -> "hlt"											= gAsm->opcode_arg_0		(OPCODE_HLT);
+ -> {"lhlx" | "lhli" | "lhlde" }					= gAsm->opcode_arg_0		(OPCODE_LHLX);
+ -> "nop"											= gAsm->opcode_arg_0		(OPCODE_NOP);
+ -> "pchl"											= gAsm->opcode_arg_0		(OPCODE_PCHL);
+ -> "ral"											= gAsm->opcode_arg_0		(OPCODE_RAL);
+ -> "rar"											= gAsm->opcode_arg_0		(OPCODE_RAR);
+ -> "rc"											= gAsm->opcode_arg_0		(OPCODE_RC);
+ -> "ret"											= gAsm->opcode_arg_0		(OPCODE_RET);
+ -> "rim"											= gAsm->opcode_arg_0		(OPCODE_RIM);
+ -> "rlc"											= gAsm->opcode_arg_0		(OPCODE_RLC);
+ -> {"rlde" | "rdel" }								= gAsm->opcode_arg_0		(OPCODE_RLDE);
+ -> "rm"											= gAsm->opcode_arg_0		(OPCODE_RM);
+ -> "rnc"											= gAsm->opcode_arg_0		(OPCODE_RNC);
+ -> "rnz"											= gAsm->opcode_arg_0		(OPCODE_RNZ);
+ -> "rp"											= gAsm->opcode_arg_0		(OPCODE_RP);
+ -> "rpe"											= gAsm->opcode_arg_0		(OPCODE_RPE);
+ -> "rpo"											= gAsm->opcode_arg_0		(OPCODE_RPO);
+ -> "rrc"											= gAsm->opcode_arg_0		(OPCODE_RRC);
+ -> "rstv"											= gAsm->opcode_arg_0		(OPCODE_RSTV);
+ -> "rz"											= gAsm->opcode_arg_0		(OPCODE_RZ);
+ -> {"shlx"	| "shli" | "shlde"}						= gAsm->opcode_arg_0		(OPCODE_SHLX);
+ -> "sim"											= gAsm->opcode_arg_0		(OPCODE_SIM);
+ -> "sphl"											= gAsm->opcode_arg_0		(OPCODE_SPHL);
+ -> "stc"											= gAsm->opcode_arg_0		(OPCODE_STC);
+ -> "xchg"											= gAsm->opcode_arg_0		(OPCODE_XCHG);
+ -> "xthl"											= gAsm->opcode_arg_0		(OPCODE_XTHL);
+ -> "lret"											= gAsm->opcode_arg_0		(OPCODE_LRET);
+
+bd reg inst
+ -> "stax", WS?..., bd register						= gAsm->opcode_arg_1reg		(OPCODE_STAX);
+ -> "ldax", WS?..., bd register						= gAsm->opcode_arg_1reg		(OPCODE_LDAX);
+
+stack reg inst
+ -> "pop", WS?..., stack register					= gAsm->opcode_arg_1reg		(OPCODE_POP);
+ -> "push", WS?..., stack register					= gAsm->opcode_arg_1reg		(OPCODE_PUSH);
+ -> "lpop", WS?..., stack register					= gAsm->opcode_arg_1reg_2byte	(OPCODE_LPOP);
+ -> "lpush", WS?..., stack register					= gAsm->opcode_arg_1reg_2byte	(OPCODE_LPUSH);
+
+eight bit reg inst
+ -> "adc", WS?..., register 8 bit					= gAsm->opcode_arg_1reg		(OPCODE_ADC);
+ -> "add", WS?..., register 8 bit					= gAsm->opcode_arg_1reg		(OPCODE_ADD);
+ -> "ana", WS?..., register 8 bit					= gAsm->opcode_arg_1reg		(OPCODE_ANA);
+ -> "cmp", WS?..., register 8 bit					= gAsm->opcode_arg_1reg		(OPCODE_CMP);
+ -> "dcr", WS?..., register 8 bit					= gAsm->opcode_arg_1reg		(OPCODE_DCR);
+ -> "inr", WS?..., register 8 bit					= gAsm->opcode_arg_1reg		(OPCODE_INR);
+ -> "mov", WS?..., register 8 bit, WS?..., ",", 
+		WS?..., register 8 bit						= gAsm->opcode_arg_2reg		(OPCODE_MOV);
+ -> "ora", WS?..., register 8 bit					= gAsm->opcode_arg_1reg		(OPCODE_ORA);
+ -> "sbb", WS?..., register 8 bit					= gAsm->opcode_arg_1reg		(OPCODE_SBB);
+ -> "sub", WS?..., register 8 bit					= gAsm->opcode_arg_1reg		(OPCODE_SUB);
+ -> "xra", WS?..., register 8 bit					= gAsm->opcode_arg_1reg		(OPCODE_XRA);
+ -> "spg", WS?..., page register					= gAsm->opcode_arg_1reg_2byte	(OPCODE_SPG);
+ -> "rpg", WS?..., page register					= gAsm->opcode_arg_1reg_2byte	(OPCODE_RPG);
+
+sixteen bit reg inst
+ -> "dad", WS?..., register 16 bit					= gAsm->opcode_arg_1reg		(OPCODE_DAD);
+ -> "dcx", WS?..., register 16 bit					= gAsm->opcode_arg_1reg		(OPCODE_DCX);
+ -> "inx", WS?..., register 16 bit					= gAsm->opcode_arg_1reg		(OPCODE_INX);
+ 
+lxi inst start 
+ -> "lxi", WS?..., register 16 bit
+
+lxi inst
+ -> lxi inst start, WS?..., ',', WS?..., equation	= gAsm->opcode_arg_1reg_equ16(OPCODE_LXI);
+
+mvi inst start
+ -> "mvi", WS?..., register 8 bit
+
+mvi inst
+ -> mvi inst start, WS?..., ',', WS?..., equation	= gAsm->opcode_arg_1reg_equ8(OPCODE_MVI);
+
+spi inst start
+ -> "spi", WS?..., page register
+
+spi inst
+ -> spi inst start, WS?..., ',', WS?..., equation	= gAsm->opcode_arg_1reg_equ16(OPCODE_SPI);
+
+rst inst
+ -> "rst", WS?..., rst arg:c						= gAsm->opcode_arg_imm		(OPCODE_RST, c);
+
+immediate operand inst
+ -> "aci", WS?..., equation							= gAsm->opcode_arg_equ8		(OPCODE_ACI);
+ -> "adi", WS?..., equation							= gAsm->opcode_arg_equ8		(OPCODE_ADI);
+ -> "ani", WS?..., equation							= gAsm->opcode_arg_equ8		(OPCODE_ANI);
+ -> "call", WS?..., equation						= gAsm->opcode_arg_equ16	(OPCODE_CALL);
+ -> "cc", WS?..., equation							= gAsm->opcode_arg_equ16	(OPCODE_CC);
+ -> "cm", WS?..., equation							= gAsm->opcode_arg_equ16	(OPCODE_CM);
+ -> "cnc", WS?..., equation							= gAsm->opcode_arg_equ16	(OPCODE_CNC);
+ -> "cnz", WS?..., equation							= gAsm->opcode_arg_equ16	(OPCODE_CNZ);
+ -> "cp", WS?..., equation							= gAsm->opcode_arg_equ16	(OPCODE_CP);
+ -> "cpe", WS?..., equation							= gAsm->opcode_arg_equ16	(OPCODE_CPE);
+ -> "cpi", WS?..., equation							= gAsm->opcode_arg_equ8		(OPCODE_CPI);
+ -> "cpo", WS?..., equation							= gAsm->opcode_arg_equ16	(OPCODE_CPO);
+ -> "cz", WS?..., equation							= gAsm->opcode_arg_equ16	(OPCODE_CZ);
+ -> "in", WS?..., equation							= gAsm->opcode_arg_equ8		(OPCODE_IN);
+ -> "jc", WS?..., equation							= gAsm->opcode_arg_equ16	(OPCODE_JC);
+ -> {"jx" | "jx5" | "jtm" | "jk" | "jd" }, WS?..., 
+		equation									= gAsm->opcode_arg_equ16	(OPCODE_JD);
+ -> "jm", WS?..., equation							= gAsm->opcode_arg_equ16	(OPCODE_JM);
+ -> "jmp", WS?..., equation							= gAsm->opcode_arg_equ16	(OPCODE_JMP);
+ -> "jnc", WS?..., equation							= gAsm->opcode_arg_equ16	(OPCODE_JNC);
+ -> {"jnx" | "jnx5" | "jtp" | "jnk" | "jnd" }, 
+		WS?..., equation							= gAsm->opcode_arg_equ16	(OPCODE_JND);
+ -> "jnz", WS?..., equation							= gAsm->opcode_arg_equ16	(OPCODE_JNZ);
+ -> "jp", WS?..., equation							= gAsm->opcode_arg_equ16	(OPCODE_JP);
+ -> "jpe", WS?..., equation							= gAsm->opcode_arg_equ16	(OPCODE_JPE);
+ -> "jpo", WS?..., equation							= gAsm->opcode_arg_equ16	(OPCODE_JPO);
+ -> "jz", WS?..., equation							= gAsm->opcode_arg_equ16	(OPCODE_JZ);
+ -> "lda", WS?..., equation							= gAsm->opcode_arg_equ16	(OPCODE_LDA);
+ -> {"ldeh" | "dehl" | "ldhi"}, WS?..., equation	= gAsm->opcode_arg_equ8		(OPCODE_LDEH);
+ -> {"ldes" | "desp" | "ldsi"}, WS?..., equation	= gAsm->opcode_arg_equ8		(OPCODE_LDES);
+ -> "lhld", WS?..., equation						= gAsm->opcode_arg_equ16	(OPCODE_LHLD);
+ -> "ori", WS?..., equation							= gAsm->opcode_arg_equ8		(OPCODE_ORI);
+ -> "out", WS?..., equation							= gAsm->opcode_arg_equ8		(OPCODE_OUT);
+ -> "sbi", WS?..., equation							= gAsm->opcode_arg_equ8		(OPCODE_SBI);
+ -> "shld", WS?..., equation						= gAsm->opcode_arg_equ16	(OPCODE_SHLD);
+ -> "sta", WS?..., equation							= gAsm->opcode_arg_equ16	(OPCODE_STA);
+ -> "sui", WS?..., equation							= gAsm->opcode_arg_equ8		(OPCODE_SUI);
+ -> "xri", WS?..., equation							= gAsm->opcode_arg_equ8		(OPCODE_XRI);
+
+// Extended instructions
+ -> "br", WS?..., equation							= gAsm->opcode_arg_equ8		(OPCODE_BR);
+ -> "bra", WS?..., equation							= gAsm->opcode_arg_equ16	(OPCODE_BRA);
+ -> "bz", WS?..., equation							= gAsm->opcode_arg_equ16	(OPCODE_BZ);
+ -> "bnz", WS?..., equation							= gAsm->opcode_arg_equ16	(OPCODE_BNZ);
+ -> "bc", WS?..., equation							= gAsm->opcode_arg_equ16	(OPCODE_BC);
+ -> "bnc", WS?..., equation							= gAsm->opcode_arg_equ16	(OPCODE_BNC);
+ -> "bm", WS?..., equation							= gAsm->opcode_arg_equ16	(OPCODE_BM);
+ -> "bp", WS?..., equation							= gAsm->opcode_arg_equ16	(OPCODE_BP);
+ -> "bpe", WS?..., equation							= gAsm->opcode_arg_equ16	(OPCODE_BPE);
+ -> "rcall", WS?..., equation						= gAsm->opcode_arg_equ16	(OPCODE_RCALL);
+ -> "sbz", WS?..., equation							= gAsm->opcode_arg_equ8		(OPCODE_SBZ);
+ -> "sbnz", WS?..., equation						= gAsm->opcode_arg_equ8		(OPCODE_SBNZ);
+ -> "sbc", WS?..., equation							= gAsm->opcode_arg_equ8		(OPCODE_SBC);
+ -> "sbnc", WS?..., equation						= gAsm->opcode_arg_equ8		(OPCODE_SBNC);
+ -> "lcall", WS?..., equation						= gAsm->opcode_arg_equ24	(OPCODE_LCALL);
+ -> "ljmp", WS?..., equation						= gAsm->opcode_arg_equ24	(OPCODE_LJMP);
+
+{                       //  Embedded C
+
+#include "MString.h"							// Include MString header
+#include "MStringArray.h"						// Include MStringArray header
+#include "assemble.h"							// Include VTAssembler header
+
+#ifndef BOOL
+typedef int     BOOL;
+#endif
+
+#ifndef TRUE
+#define TRUE    1
+#define FALSE   0
+#endif
+
+VTAssembler*            gAsm = 0;				// Pointer to the assembler
+CRpnEquation*			gEq = 0;				// Pointer to active equation
+VTObArray*				gExpList = 0;			// Pointer to active expression list
+CMacro*					gMacro = 0;				// Pointer to active macro
+MStringArray*			gNameList = 0;			// Pointer to active name list
+int						gDefine = 0;			// Indicated in a #define reduction
+CCondition*				gCond = 0;				// Pointer to active condition
+const char*				gFilename = 0;			// Pointer to the filename
+char					ss[32][256];			// String Stack;
+CMacro*					gMacroStack[32];		// Macro Stack;
+int						ms_idx = 0;				// Macro Stack Index
+char					integer[64];			// Integer storage space
+char					int_len = 0;			// Integer string length
+int						ss_idx = 0;				// String Stack Index
+int						ss_len = 0;				// SS string length 
+int						ss_addr = 0;			// Address at start of literal name
+double                  gDivisor = 1.0;			// Current divisor for float converwions
+int						gTabSize = 4;
+char					reg[10];				// Register arguments
+int						reg_cnt = 0;			// Register Arg count
+int						label = 0;				// Number of labels on string stack
+int						name_list_cnt = 0;		// Number of strings in name list
+int						ex_cnt = 0;				// Number of expressions in expression list
+int						gAbort = 0;				// Abort on #error
+int						page, seg;
+void a85parse(void);
+
+// This function checks the string accumulator for errors
+// parsing the file.  If there are no errors, check the string
+// accumulator to insure it is empty.  If anything is left in the
+// accumulator, then there is an error with our parser.
+void check_string_stack(void)
+{
+	// If we have no errors...
+	if (gAsm->m_Errors.GetSize() == 0)
+	{
+		int		c;
+		
+		// Check string accumulator size
+		int stringCount;
+		if ((stringCount = ss_idx) != 0)
+		{
+			MString string;
+			string.Format("Internal Design Parse Error - %d string(s) left on stack!",
+				stringCount);
+			gAsm->m_Errors.Add(string);
+			for (c = 0; c < stringCount; c++)
+			{
+				string.Format("    %s", ss[ss_idx--]);
+				gAsm->m_Errors.Add(string);
+			}
+		}
+	}
+}
+
+// ParseDesignFile is the entry point for parsing design files.  The full path of
+// the design file should be passed as the only parameter.  If the design file is
+// parsed successfully, the routine will return TRUE, otherwise it will return
+// FALSE.
+BOOL ParseASMFile(const char* filename, VTAssembler* pAsm)
+{
+	if (pAsm == NULL)
+		return FALSE;
+
+	// Make the given assembler a global
+	gAsm = pAsm;
+
+	// Insure no active equation left over from a previous run
+	if (gEq != 0)
+		delete gEq;
+	if (gExpList != 0)
+		delete gExpList;
+	if (gNameList != 0)
+		delete gNameList;
+	if (gCond != 0)
+		delete gCond;
+	if (gMacro != 0)
+		delete gMacro;
+
+	// Allocate an active equation to be used during parsing
+	gEq = new CRpnEquation;
+	gExpList = new VTObArray;
+	gNameList = new MStringArray;
+	gCond = new CCondition;
+	gMacro = new CMacro;
+	gAsm->m_FileIndex = gAsm->m_Filenames.Add(filename);
+	gFilename = filename;
+
+	// Try to open the file
+	if ((gAsm->m_fd = fopen(gAsm->m_Filenames[gAsm->m_FileIndex], "r")) == 0)
+	{
+		// Add error indicating failure to open file
+		gAsm->m_Errors.Add((char *) "Error opening file");
+		return FALSE;
+	}
+
+	// Reset the string stack
+	ss_idx = 0;
+	ss_len = 0;
+	int_len = 0;
+	gAbort = 0;
+	
+	// Reset the Macro stack
+	for (int c = 0; c < 32; c++)
+		gMacroStack[c] = 0;
+	ms_idx = 0;
+
+	// Reset the Register, name, expression, and label counters
+	reg_cnt = label = ex_cnt = name_list_cnt = 0;
+
+	// Parse the file.
+	a85parse();
+
+	fclose(gAsm->m_fd);
+
+	// Check for parser errors
+	check_string_stack();
+
+	// Check if errors occured
+	int count = gAsm->m_Errors.GetSize();
+	if (count != 0)
+		return FALSE;
+
+	// No errors!
+	return TRUE;
+}
+
+void handle_error(void)
+{
+	char	msg[512];
+	
+	sprintf(msg, "Error token = %d", (PCB).error_frame_token);
+}
+
+void syntax_error(const char *token_name)
+{
+	MString		string;
+	int			eolMsg;
+	int			expected_immediate = 0;
+	int			expected_reg = 0;
+
+	// Determine if this is the "unexpected eol" message
+	eolMsg = !strcmp("Unexpected '\\n'", (PCB).error_message);
+
+	switch ((PCB).error_frame_token)
+	{
+	// Handle general statement syntax error
+	case a85parse_statement_token:
+	    string.Format("Error in line %d(%s), column %d:  Malformed %s - %s",
+			(PCB).line, gFilename, (PCB).column,
+			token_name, (PCB).error_message);
+		break;
+
+	// Handle improper LXI instruction error
+	case a85parse_lxi_inst_start_token:
+		if (reg_cnt == 0)
+			expected_reg = 16;
+		else
+			expected_immediate = 1;
+		break;
+
+	// Handle improper MVI instruction error
+	case a85parse_mvi_inst_start_token:
+		if (reg_cnt == 0)
+			expected_reg = 8;
+		else
+			expected_immediate = 1;
+		break;
+
+	// Handle improper 16-bit register argument error
+	case a85parse_sixteen_bit_reg_inst_token:
+	case a85parse_stack_reg_inst_token:
+		expected_reg = 16;
+		break;
+
+	// Handle improper 8-bit register argument error
+	case a85parse_eight_bit_reg_inst_token:
+		expected_reg = 8;
+		break;
+
+	case a85parse_lxi_inst_token:
+	case a85parse_mvi_inst_token:
+	case a85parse_immediate_operand_inst_token:
+		expected_immediate = 1;
+		break;
+
+	case a85parse_rst_inst_token:
+		if (eolMsg)
+			string.Format("Error in line %d(%s), column %d:  Expected RST number",
+				(PCB).line, gFilename, (PCB).column);
+		else
+			string.Format("Error in line %d(%s), column %d:  Invalid RST number",
+				(PCB).line, gFilename, (PCB).column, (PCB).error_message);
+		break;
+		
+	case a85parse_preproc_start_token:
+		if (eolMsg)
+			string.Format("Error in line %d(%s), column %d:  Expected preprocessor directive",
+				(PCB).line, gFilename, (PCB).column);
+		else
+			string.Format("Error in line %d(%s), column %d:  Unknown preprocessor directive",
+				(PCB).line, gFilename, (PCB).column, (PCB).error_message);
+		break;
+		
+	case a85parse_preproc_inst_token:
+		string.Format("Error in line %d(%s), column %d:  Invalid preprocessor directive syntax",
+				(PCB).line, gFilename, (PCB).column, (PCB).error_message);
+		break;
+		
+	default:
+		if (eolMsg)
+			string.Format("Error in line %d(%s), column %d:  Unexpected end of line",
+				(PCB).line, gFilename, (PCB).column);
+		else
+			string.Format("Error in line %d(%s), column %d:  %s",
+				(PCB).line, gFilename, (PCB).column, (PCB).error_message);
+		break;
+	}
+
+	if (expected_reg == 16)
+	{
+		if (eolMsg)
+			string.Format("Error in line %d(%s), column %d:  Expected 16-bit register",
+				(PCB).line, gFilename, (PCB).column);
+		else
+			string.Format("Error in line %d(%s), column %d:  Invalid 16-bit register",
+				(PCB).line, gFilename, (PCB).column);
+	}
+	else if (expected_reg == 8)
+	{
+		if (eolMsg)
+			string.Format("Error in line %d(%s), column %d:  Expected 8-bit register",
+				(PCB).line, gFilename, (PCB).column);
+		else
+			string.Format("Error in line %d(%s), column %d:  Invalid 8-bit register",
+				(PCB).line, gFilename, (PCB).column);
+	}
+	
+	if (expected_immediate)
+	{
+		if (eolMsg)
+			string.Format("Error in line %d(%s), column %d:  Expected immediate operand",
+				(PCB).line, gFilename, (PCB).column);
+		else
+			string.Format("Error in line %d(%s), column %d:  Invalid immediate operand",
+				(PCB).line, gFilename, (PCB).column);
+	}
+
+	if (!gAbort) 
+		gAsm->m_Errors.Add(string); 
+
+	// Clear the string stack
+	ss_idx = 0; 
+	ss_len = 0;
+}
+
+// Define macros to handle input and errors
+
+#define TAB_SPACING gTabSize
+
+#define GET_INPUT {(PCB).input_code = (gAsm->m_fd != 0 && !gAbort) ? \
+	gAsm->preprocessor() : 0; }
+	
+//	fgetc(gAsm->m_fd) : 0; if ((PCB).input_code == 13) (PCB).input_code = fgetc(gAsm->m_fd);\
+//	}
+
+#define SYNTAX_ERROR { syntax_error(TOKEN_NAMES[(PCB).error_frame_token]); }
+
+/*
+#define SYNTAX_ERROR {MString string;  if ((PCB).error_frame_token != 0) \
+    string.Format("Error in line %d(%s), column%d:  Malformed %s - %s", \
+    (PCB).line, gFilename, (PCB).column, \*
+    TOKEN_NAMES[(PCB).error_frame_token], (PCB).error_message); \
+  else if (strcmp("Unexpected '\\n'", (PCB).error_message) == 0) \
+    string.Format("Error in line %d(%s), column %d:  Unexpected end of line", \
+    (PCB).line, gFilename, (PCB).column); \
+  else \
+    string.Format("Error in line %d(%s), column %d:  %s", (PCB).line, gFilenaeme, \
+    (PCB).column, (PCB).error_message); \
+  if (!gAbort) gAsm->m_Errors.Add(string); ss_idx = 0; ss_len = 0; }
+*/
+
+#define PARSER_STACK_OVERFLOW {MString string;  string.Format(\
+   "\nParser stack overflow, line %d, column %d",\
+   (PCB).line, (PCB).column); if (!gAbort) gAsm->m_Errors.Add(string);}
+
+#define REDUCTION_TOKEN_ERROR {MString string;  string.Format(\
+    "\nReduction token error, line %d, column %d", \
+    (PCB).line, (PCB).column); if (!gAbort) gAsm->m_Errors.Add(string);}
+
+int do_hex(int h, int n)
+{
+	int temp1, temp2;
+
+	temp2 = h * 16;
+	temp1 = (n <='9' ? n-'0' : (n | 0x60) - 'a' + 10);
+	temp1 += temp2;
+	return temp1;
+}
+
+void expression_list_literal()
+{
+	CExpression *pExp = new CExpression;
+
+	pExp->m_Literal = ss[ss_idx--];
+	gExpList->Add(pExp);
+}
+
+void expression_list_equation()
+{
+	CExpression *pExp = new CExpression;
+
+	pExp->m_Equation = gEq;
+	gEq = new CRpnEquation;
+
+	gExpList->Add(pExp);
+}
+
+void condition(int condition)
+{
+	if (condition == -1)
+	{
+		// Get Right hand side equation
+		gCond->m_EqRight = gEq;
+	}
+	else
+	{
+		// Save conditional
+		gCond->m_Condition = condition;
+		gCond->m_EqLeft = gEq;
+	}
+
+		// Assign new equation for parser
+	gEq = new CRpnEquation;
+}
+
+int conv_to_hex()
+{
+	int temp1;
+
+	sscanf(integer, "%x", &temp1);
+	
+	return temp1;
+}
+
+int conv_to_dec()
+{
+	int temp1;
+
+	sscanf(integer, "%d", &temp1);
+	
+	return temp1;
+}
+
+int conv_to_oct()
+{
+	int temp1;
+
+	sscanf(integer, "%o", &temp1);
+	
+	return temp1;
+}
+
+int conv_to_bin()
+{
+	int temp1, x;
+
+	temp1 = 0;
+	x = 0;
+
+	while (integer[x] != 0)
+		temp1 = (temp1 << 1) + integer[x++] - '0';
+		
+	return temp1;
+}
+
+int chtoh(char ch)
+{
+	if (ch < 'A')
+		return ch - '0';
+	if (ch < 'a')
+		return ch = 'A' + 10;
+	return ch - 'a' + 10;
+}
+
+}                       // End of Embedded C
+
