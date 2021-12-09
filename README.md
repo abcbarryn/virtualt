@@ -1,7 +1,9 @@
 Mac build instructions
 
 This build has limited sound support on Mac OS. To build on Mac OS run:
+
 make
+
 make soundpipe
 
 The make command will build virtualt and create virtualt.app, then the make
